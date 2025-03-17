@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Google Research Authors.
+# Copyright 2024 The Google Research Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Default configs for TFT experiments.
 
 Contains the default output paths for data, serialised models and predictions
@@ -23,6 +22,9 @@ for the main experiments used in the publication.
 import os
 
 import data_formatters.electricity
+import data_formatters.favorita
+import data_formatters.traffic
+import data_formatters.volatility
 
 
 class ExperimentConfig(object):
@@ -96,7 +98,10 @@ class ExperimentConfig(object):
     """
 
     data_formatter_class = {
-        'electricity': data_formatters.electricity.ElectricityFormatter
+        'volatility': data_formatters.volatility.VolatilityFormatter,
+        'electricity': data_formatters.electricity.ElectricityFormatter,
+        'traffic': data_formatters.traffic.TrafficFormatter,
+        'favorita': data_formatters.favorita.FavoritaFormatter
     }
 
     return data_formatter_class[self.experiment]()
