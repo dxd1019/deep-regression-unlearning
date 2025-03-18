@@ -1,0 +1,11 @@
+wget
+pyunpack
+patool
+torch
+pandas
+numpy
+scipy
+matplotlib
+seaborn
+PIL
+torchvision
