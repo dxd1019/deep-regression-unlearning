@@ -1,16 +1,8 @@
 # Deep Regression Unlearning
-Official repo of the paper Deep Regression Unlearning accepted in ICML 2023.
+A modified version of the official repo of the paper Deep Regression Unlearning accepted in ICML 2023.
 
 ## Description
-We study the unexplored field of unlearning in deep regression models and introduce two unlearning methods, blindspot unlearning and gaussian amnesiac unlearning. We adapt metrics from earlier studies on unlearning in deep classification problems for the regression setting. We evaluate our method using a variety of unlearning metrics including different privacy attacks. We conduct regression experiments for computer vision, natural language processing and forecasting applications.
+This is a modified version of the repository for the paper Deep Regression Unlearning, accepted at ICML 2023. The modifications include additional data scripts, experiment configuration updates, adaptations of AgeDB notebook to Python scripts, as well as adaptations to local training. The repository also features improvements to data download scripts and branch integration updates.
 
-## Paper
+## Reference Paper
 [Deep Regression Unlearning](https://arxiv.org/pdf/2210.08196)
-
-## BibTex
-@article{tarun2022deep,
-  title={Deep Regression Unlearning},
-  author={Tarun, Ayush K and Chundawat, Vikram S and Mandal, Murari and Kankanhalli, Mohan},
-  journal={arXiv preprint arXiv:2210.08196},
-  year={2022}
-}
