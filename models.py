@@ -454,37 +454,105 @@ class TFT(nn.Module):
         ###x should have dimensions (batch_size, timesteps, input_size)
         ## Apply masking is used to mask variables that should not be accessed after the encoding steps
         #Time-varying real embeddings 
-        if apply_masking:
+        time_varying_real_embedding = None
+        if apply_masking: # Decoder part
             time_varying_real_vectors = []
-            for i in range(self.time_varying_real_variables_decoder):
-                emb = self.time_varying_linear_layers[i+self.num_input_series_to_mask](x[:,:,i+self.num_input_series_to_mask].view(x.size(0), -1, 1))
-                time_varying_real_vectors.append(emb)
-            time_varying_real_embedding = torch.cat(time_varying_real_vectors, dim=2)
+            if self.time_varying_real_variables_decoder > 0:
+                for i in range(self.time_varying_real_variables_decoder):
+                    # Assumes x's columns for decoder are indexed starting from the masked series
+                    # And self.time_varying_linear_layers are indexed based on original encoder variables
+                    layer_idx = i + self.num_input_series_to_mask
+                    # Ensure x has enough columns for this access
+                    if layer_idx < self.time_varying_real_variables_encoder and \
+                       (i + self.num_input_series_to_mask) < x.size(2): # Check column index in x
+                        emb = self.time_varying_linear_layers[layer_idx](
+                            x[:, :, i + self.num_input_series_to_mask].view(x.size(0), -1, 1)
+                        )
+                        time_varying_real_vectors.append(emb)
+                    # else: # This case might indicate a config mismatch for decoder inputs
+                    #     print(f"Warning (decoder): Skipping real var index {i} due to layer/column mismatch.")
+            if time_varying_real_vectors:
+                time_varying_real_embedding = torch.cat(time_varying_real_vectors, dim=2)
+        else: # Encoder part
+            time_varying_real_vectors = []
+            if self.time_varying_real_variables_encoder > 0:
+                for i in range(self.time_varying_real_variables_encoder):
+                    if i < x.size(2): # Check column index in x
+                        emb = self.time_varying_linear_layers[i](x[:, :, i].view(x.size(0), -1, 1))
+                        time_varying_real_vectors.append(emb)
+                    # else:
+                    #    print(f"Warning (encoder): Skipping real var index {i} due to column mismatch.")
+            if time_varying_real_vectors:
+                time_varying_real_embedding = torch.cat(time_varying_real_vectors, dim=2)
 
-        else: 
-            time_varying_real_vectors = []
-            for i in range(self.time_varying_real_variables_encoder):
-                emb = self.time_varying_linear_layers[i](x[:,:,i].view(x.size(0), -1, 1))
-                time_varying_real_vectors.append(emb)
-            time_varying_real_embedding = torch.cat(time_varying_real_vectors, dim=2)
-        
-        
-         ##Time-varying categorical embeddings (ie hour)
+        # Time-varying categorical embeddings
+        time_varying_categoical_embedding = None
         time_varying_categoical_vectors = []
-        for i in range(self.time_varying_categoical_variables):
-            emb = self.time_varying_embedding_layers[i](x[:, :,self.time_varying_real_variables_encoder+i].view(x.size(0), -1, 1).long())
-            time_varying_categoical_vectors.append(emb)
-        time_varying_categoical_embedding = torch.cat(time_varying_categoical_vectors, dim=2)  
+        if self.time_varying_categoical_variables > 0:
+            for i in range(self.time_varying_categoical_variables):
+                # Categorical vars are after real vars in 'x'
+                col_idx_in_x = self.time_varying_real_variables_encoder + i
+                if col_idx_in_x < x.size(2): # Check column index in x
+                    emb = self.time_varying_embedding_layers[i](
+                        x[:, :, col_idx_in_x].view(x.size(0), -1, 1).long()
+                    )
+                    time_varying_categoical_vectors.append(emb)
+                # else:
+                #    print(f"Warning: Skipping categorical var index {i} due to column mismatch.")
+        if time_varying_categoical_vectors:
+            time_varying_categoical_embedding = torch.cat(time_varying_categoical_vectors, dim=2)
 
-        ##repeat static_embedding for all timesteps
-        static_embedding = torch.cat(time_varying_categoical_embedding.size(1)*[static_embedding])
-        static_embedding = static_embedding.view(time_varying_categoical_embedding.size(0),time_varying_categoical_embedding.size(1),-1 )
+        # Repeat static_embedding for all timesteps
+        static_embedding_expanded = None
+        if self.static_variables > 0 and static_embedding is not None and x.size(1) > 0:
+            # static_embedding is (batch_size, total_static_embedding_dim)
+            # We need (batch_size, num_timesteps, total_static_embedding_dim)
+            static_embedding_expanded = static_embedding.unsqueeze(1).repeat(1, x.size(1), 1)
+
+        # Concatenate all embeddings
+        embeddings_to_cat = []
+        if static_embedding_expanded is not None:
+            embeddings_to_cat.append(static_embedding_expanded)
+        if time_varying_categoical_embedding is not None:
+            embeddings_to_cat.append(time_varying_categoical_embedding)
+        if time_varying_real_embedding is not None:
+            embeddings_to_cat.append(time_varying_real_embedding)
+
+        if not embeddings_to_cat:
+            # This means no features were processed into embeddings.
+            # This could happen if all variable counts are 0.
+            # VSN expects (num_total_input_vars * embedding_dim) flattened, or structured.
+            # The current VSN takes (batch, timesteps, num_selected_vars * embedding_dim)
+            # If this list is empty, the resulting tensor will have 0 features in the last dim.
+            # For VSN, it gets input: embeddings_encoder[:,:,:-(self.embedding_dim*self.static_variables)]
+            # This implies VSN input is all non-static selected vars. This structure needs to be correct.
+            
+            # Let's ensure we return a tensor of the correct shape (B, T, 0) if no embeddings.
+            # The VSN input slicing later will also need to be robust to this.
+            # The VSN is called with:
+            #   embeddings_encoder[:,:,:-(self.embedding_dim*self.static_variables)]  (for variable part)
+            #   embeddings_encoder[:,:,-(self.embedding_dim*self.static_variables):] (for context part - static)
+            # If the "variable part" is empty but "context part" is not, VSN might still work if num_inputs=0 for variable part.
+
+            # If all are None, it means the input to VSN (after slicing for static context) will be empty.
+            # VSN's self.num_inputs is (real_vars + cat_vars). If this is 0, VSN logic should handle it.
+            # If config for VSN (num_inputs) expects features but gets 0-dim, it will fail.
+
+            # Simplest: if no features, return an empty tensor for that part.
+            # The VSN input is (num_inputs_to_VSN * embedding_dim).
+            # If embeddings_to_cat is empty, num_inputs_to_VSN should be 0.
+            # This means (config['time_varying_real_variables_encoder'] +  config['time_varying_categoical_variables']) for encoder VSN is 0.
+            if x.size(1) > 0 : # Timesteps exist
+                final_embeddings = torch.empty((x.size(0), x.size(1), 0), device=x.device, dtype=x.dtype if x.numel() > 0 else torch.float32)
+            else: # No timesteps (should not happen if x comes from DataLoader)
+                final_embeddings = torch.empty((x.size(0), 0, 0), device=x.device, dtype=x.dtype if x.numel() > 0 else torch.float32)
+            # print("Warning: No embeddings were generated in apply_embedding. Returning empty tensor.")
+        else:
+            final_embeddings = torch.cat(embeddings_to_cat, dim=2)
         
-        ##concatenate all embeddings
-        embeddings = torch.cat([static_embedding,time_varying_categoical_embedding,time_varying_real_embedding], dim=2)
-        
-        return embeddings.view(-1,x.size(0),embeddings.size(2))
-    
+        # Expected output shape for LSTM (seq_len, batch, features)
+        return final_embeddings.permute(1, 0, 2).contiguous()
+            
     def encode(self, x, hidden=None):
     
         if hidden is None:
