@@ -476,7 +476,7 @@ class TFT(nn.Module):
         # self.batch_size = config['batch_size'] # Store for reference if needed, but don't use for dynamic sizing
         self.static_variables = config['static_variables']
         self.encode_length = config['encode_length'] # Expected encoder length
-        self.time_varying_categoical_variables =  config['time_varying_categoical_variables']
+        self.time_varying_categorical_variables =  config['time_varying_categorical_variables']
         self.time_varying_real_variables_encoder =  config['time_varying_real_variables_encoder']
         self.time_varying_real_variables_decoder =  config['time_varying_real_variables_decoder']
         self.num_input_series_to_mask = config['num_masked_series']
@@ -496,7 +496,7 @@ class TFT(nn.Module):
             self.static_embedding_layers.append(emb)
 
         self.time_varying_embedding_layers = nn.ModuleList()
-        for i in range(self.time_varying_categoical_variables):
+        for i in range(self.time_varying_categorical_variables):
             emb = TimeDistributed(nn.Embedding(config['time_varying_embedding_vocab_sizes'][i], config['embedding_dim']), batch_first=True)
             self.time_varying_embedding_layers.append(emb)
 
@@ -513,7 +513,7 @@ class TFT(nn.Module):
 
         self.encoder_variable_selection = VariableSelectionNetwork(
             input_size=config['embedding_dim'],
-            num_inputs=(config['time_varying_real_variables_encoder'] + config['time_varying_categoical_variables']),
+            num_inputs=(config['time_varying_real_variables_encoder'] + config['time_varying_categorical_variables']),
             hidden_size=self.hidden_size, # VSN output feature dim
             dropout=self.dropout,
             context_input_size=static_context_size
@@ -521,7 +521,7 @@ class TFT(nn.Module):
 
         self.decoder_variable_selection = VariableSelectionNetwork(
             input_size=config['embedding_dim'],
-            num_inputs=(config['time_varying_real_variables_decoder'] + config['time_varying_categoical_variables']),
+            num_inputs=(config['time_varying_real_variables_decoder'] + config['time_varying_categorical_variables']),
             hidden_size=self.hidden_size, # VSN output feature dim
             dropout=self.dropout,
             context_input_size=static_context_size
@@ -707,7 +707,7 @@ class TFT(nn.Module):
         encoder_vars_emb, encoder_static_ctx_repeated = self.apply_embedding(
             encoder_input_ts, static_embeddings_cat,
             self.time_varying_real_variables_encoder,
-            self.time_varying_categoical_variables, # Assuming cat vars are same count for enc/dec
+            self.time_varying_categorical_variables, # Assuming cat vars are same count for enc/dec
             is_decoder_path=False
         )
         # encoder_vars_emb: (enc_len, B, N_enc_selected_vars * emb_dim)
@@ -724,7 +724,7 @@ class TFT(nn.Module):
             decoder_vars_emb, decoder_static_ctx_repeated = self.apply_embedding(
                 decoder_input_ts, static_embeddings_cat,
                 self.time_varying_real_variables_decoder,
-                self.time_varying_categoical_variables, # Assuming cat vars are same count for enc/dec
+                self.time_varying_categorical_variables, # Assuming cat vars are same count for enc/dec
                 is_decoder_path=True
             )
             processed_decoder_input, _ = self.decoder_variable_selection(
